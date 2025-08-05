@@ -109,19 +109,24 @@ void MapProjection::reproject(float x, float y, double &lat, double &lon) const
 	}
 }
 
+//计算两个全球坐标系（WGS84坐标系）下的点之间的地球表面距离，以测量两个点之间的直线距离
 float get_distance_to_next_waypoint(double lat_now, double lon_now, double lat_next, double lon_next)
 {
+	//将输入的经度（纬度）值从度数转换为弧度，大地测量中通常使用弧度表示角度
 	const double lat_now_rad = math::radians(lat_now);
 	const double lat_next_rad = math::radians(lat_next);
 
+	//计算两个点的纬度差和经度差
 	const double d_lat = lat_next_rad - lat_now_rad;
 	const double d_lon = math::radians(lon_next) - math::radians(lon_now);
 
+	//使用 Haversine 公式计算球面上两个点之间的弧长
 	const double a = sin(d_lat / 2.0) * sin(d_lat / 2.0) + sin(d_lon / 2.0) * sin(d_lon / 2.0) * cos(lat_now_rad) * cos(
 				 lat_next_rad);
 
 	const double c = atan2(sqrt(a), sqrt(1.0 - a));
 
+	//将弧长（c）乘以地球半径的两倍，得到两点之间的地球表面距离（米为单位）
 	return static_cast<float>(CONSTANTS_RADIUS_OF_EARTH * 2.0 * c);
 }
 

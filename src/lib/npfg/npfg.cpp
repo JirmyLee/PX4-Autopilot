@@ -47,10 +47,12 @@
 using matrix::Vector2d;
 using matrix::Vector2f;
 
+//实现飞行器在风速影响下沿着给定路径导航的控制逻辑，以便保持在路径上并跟踪所期望的航向
 void NPFG::guideToPath(const matrix::Vector2f &curr_pos_local, const Vector2f &ground_vel, const Vector2f &wind_vel,
 		       const Vector2f &unit_path_tangent,
 		       const Vector2f &position_on_path, const float path_curvature)
 {
+	//计算一些飞行状态的参数，包括地速、空速、风速
 	const float ground_speed = ground_vel.norm();
 
 	const Vector2f air_vel = ground_vel - wind_vel;
@@ -59,17 +61,21 @@ void NPFG::guideToPath(const matrix::Vector2f &curr_pos_local, const Vector2f &g
 	const float wind_speed = wind_vel.norm();
 
 	const Vector2f path_pos_to_vehicle{curr_pos_local - position_on_path};
+	//计算飞行器相对于路径的偏航误差signed_track_error，这个误差表示飞行器当前的偏航角度相对于路径切线的偏差
 	const float signed_track_error = unit_path_tangent.cross(path_pos_to_vehicle);
 
+	//计算风速在路径上的投影，包括风速在路径法线方向上的投影wind_cross_upt和风速在路径切线方向上的投影wind_dot_upt
 	// on-track wind triangle projections
 	const float wind_cross_upt = wind_vel.cross(unit_path_tangent);
 	const float wind_dot_upt = wind_vel.dot(unit_path_tangent);
 
+	//计算飞行器当前航向的可行性feas_on_track_，这个可行性表示了当前飞行器的航向是否受到风速的影响
 	// calculate the bearing feasibility on the track at the current closest point
 	feas_on_track_ = bearingFeasibility(wind_cross_upt, wind_dot_upt, airspeed, wind_speed);
 
 	const float track_error = fabsf(signed_track_error);
 
+	//根据飞行器的地速、空速、风速、偏航误差等信息，更新导航控制参数，包括适应后的周期adapted_period_、比例增益p_gain_以及时间常数time_const_
 	// update control parameters considering upper and lower stability bounds (if enabled)
 	// must be called before trackErrorBound() as it updates time_const_
 	adapted_period_ = adaptPeriod(ground_speed, airspeed, wind_speed, track_error,
@@ -77,8 +83,10 @@ void NPFG::guideToPath(const matrix::Vector2f &curr_pos_local, const Vector2f &g
 	p_gain_ = pGain(adapted_period_, damping_);
 	time_const_ = timeConst(adapted_period_, damping_);
 
+	//计算偏航角误差的上限track_error_bound_，这个上限随着地面速度的变化而动态调整
 	// track error bound is dynamic depending on ground speed
 	track_error_bound_ = trackErrorBound(ground_speed, time_const_);
+	//根据偏航角误差上限，计算归一化的偏航角误差normalized_track_error，以及基于归一化偏航角误差的前视角度look_ahead_ang和路径接近度 track_proximity_
 	const float normalized_track_error = normalizedTrackError(track_error, track_error_bound_);
 
 	// look ahead angle based solely on track proximity
@@ -86,8 +94,10 @@ void NPFG::guideToPath(const matrix::Vector2f &curr_pos_local, const Vector2f &g
 
 	track_proximity_ = trackProximity(look_ahead_ang);
 
+	//计算飞行器的目标航向向量bearing_vec_，用于指导飞行器沿着路径飞行
 	bearing_vec_ = bearingVec(unit_path_tangent, look_ahead_ang, signed_track_error);
 
+	//计算风速在目标航向上的投影wind_cross_bearing和风速与目标航向的夹角wind_dot_bearing，用于计算连续的航向可行性feas_
 	// wind triangle projections
 	const float wind_cross_bearing = wind_vel.cross(bearing_vec_);
 	const float wind_dot_bearing = wind_vel.dot(bearing_vec_);
@@ -98,8 +108,10 @@ void NPFG::guideToPath(const matrix::Vector2f &curr_pos_local, const Vector2f &g
 	// we consider feasibility of both the current bearing as well as that on the track at the current closest point
 	const float feas_combined = feas_ * feas_on_track_;
 
+	//计算飞行器的最小地速参考值min_ground_speed_ref_，考虑了风速和路径上的航向可行性
 	min_ground_speed_ref_ = minGroundSpeed(normalized_track_error, feas_combined);
 
+	//计算飞行器的参考空速airspeed_ref_和横向加速度需求lateral_accel_，以便生成导航控制输出，并更新了横滚角设定值
 	// reference air velocity with directional feedforward effect for following
 	// curvature in wind and magnitude incrementation depending on minimum ground
 	// speed violations and/or high wind conditions in general

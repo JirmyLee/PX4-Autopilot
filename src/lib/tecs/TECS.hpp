@@ -634,6 +634,7 @@ public:
 
 	void set_seb_rate_ff_gain(float ff_gain) { _control_param.seb_rate_ff = ff_gain; };
 
+	//估计系统重置飞行高度时，通过逐渐调整飞行器的高度，使重置过程更加平滑，避免突然的高度变化，确保飞行器在高度变化时能够平稳过渡。
 	/**
 	 * Handle the altitude reset
 	 *

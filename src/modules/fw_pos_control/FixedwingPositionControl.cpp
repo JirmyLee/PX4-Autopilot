@@ -48,6 +48,7 @@ using matrix::Vector2d;
 using matrix::Vector3f;
 using matrix::wrap_pi;
 
+
 FixedwingPositionControl::FixedwingPositionControl(bool vtol) :
 	ModuleParams(nullptr),
 	WorkItem(MODULE_NAME, px4::wq_configurations::nav_and_controllers),
@@ -201,6 +202,7 @@ FixedwingPositionControl::parameters_update()
 	return check_ret;
 }
 
+//监视飞行器的控制模式
 void
 FixedwingPositionControl::vehicle_control_mode_poll()
 {
@@ -218,6 +220,7 @@ FixedwingPositionControl::vehicle_control_mode_poll()
 	}
 }
 
+//获取来自飞控系统的指令，例如执行复飞或改变飞行速度的指令，并作出相应的响应。
 void
 FixedwingPositionControl::vehicle_command_poll()
 {
@@ -252,6 +255,7 @@ FixedwingPositionControl::vehicle_command_poll()
 	}
 }
 
+//获取空速信息，更新飞行控制中的空速状态
 void
 FixedwingPositionControl::airspeed_poll()
 {
@@ -288,6 +292,7 @@ FixedwingPositionControl::airspeed_poll()
 	}
 }
 
+//获取风速信息，以便在风速存在时对飞行控制进行相应的调整
 void
 FixedwingPositionControl::wind_poll()
 {
@@ -315,6 +320,7 @@ FixedwingPositionControl::wind_poll()
 	}
 }
 
+//获取来自遥控器的手动控制指令，例如油门和俯仰控制，以便进行手动飞行模式下的控制
 void
 FixedwingPositionControl::manual_control_setpoint_poll()
 {
@@ -338,7 +344,7 @@ FixedwingPositionControl::manual_control_setpoint_poll()
 	}
 }
 
-
+//获取飞行姿态信息，包括横滚、俯仰和偏航角
 void
 FixedwingPositionControl::vehicle_attitude_poll()
 {
@@ -379,6 +385,7 @@ FixedwingPositionControl::vehicle_attitude_poll()
 	}
 }
 
+//获取手动设定的空速
 float
 FixedwingPositionControl::get_manual_airspeed_setpoint()
 {
@@ -397,16 +404,20 @@ FixedwingPositionControl::get_manual_airspeed_setpoint()
 	return altctrl_airspeed;
 }
 
+//在不同情况下，根据飞机的状态和环境条件来调整空速设定值
 float
 FixedwingPositionControl::adapt_airspeed_setpoint(const float control_interval, float calibrated_airspeed_setpoint,
 		float calibrated_min_airspeed, const Vector2f &ground_speed)
 {
+	//校准空速设定值
 	if (!PX4_ISFINITE(calibrated_airspeed_setpoint) || calibrated_airspeed_setpoint <= FLT_EPSILON) {
 		calibrated_airspeed_setpoint = _param_fw_airspd_trim.get();
 	}
 
+	//适应巡航空速
 	// Adapt cruise airspeed when otherwise the min groundspeed couldn't be maintained
 	if (!_wind_valid) {
+		//如果风速信息无效，则根据当前机体坐标系下的地速和最小地速设定值来调整空速设定点。目的是为了防止在风速较大的情况下，风将飞机吹离航线
 		/*
 		 * This error value ensures that a plane (as long as its throttle capability is
 		 * not exceeded) travels towards a waypoint (and is not pushed more and more away
@@ -420,6 +431,7 @@ FixedwingPositionControl::adapt_airspeed_setpoint(const float control_interval, 
 		}
 	}
 
+	//根据俯仰角调整负载因子
 	float load_factor_from_bank_angle = 1.0f;
 
 	if (PX4_ISFINITE(_att_sp.roll_body)) {
@@ -433,6 +445,7 @@ FixedwingPositionControl::adapt_airspeed_setpoint(const float control_interval, 
 					       MAX_WEIGHT_RATIO);
 	}
 
+	//基于风速估计调整最小空速设定点
 	// Here we make sure that the set minimum airspeed is automatically adapted to the current load factor.
 	// The minimum airspeed is the controller limit (FW_AIRSPD_MIN, unless either in takeoff or landing) that should
 	// resemble the vehicles stall speed (CAS) with a 1g load plus some safety margin (as no controller tracks perfectly).
@@ -449,6 +462,7 @@ FixedwingPositionControl::adapt_airspeed_setpoint(const float control_interval, 
 	calibrated_airspeed_setpoint = constrain(calibrated_airspeed_setpoint, calibrated_min_airspeed,
 				       _param_fw_airspd_max.get());
 
+	//空速设定值斜率限制
 	// initialize to current airspeed setpoint, also if previous setpoint is out of bounds to not apply slew rate in that case
 	const bool slewed_airspeed_outside_of_limits = _airspeed_slew_rate_controller.getState() < calibrated_min_airspeed
 			|| _airspeed_slew_rate_controller.getState() > _param_fw_airspd_max.get();
@@ -464,6 +478,7 @@ FixedwingPositionControl::adapt_airspeed_setpoint(const float control_interval, 
 	return calibrated_airspeed_setpoint;
 }
 
+//发布高度控制的状态信息，包括设定高度、空速设定、垂直速度设定等
 void
 FixedwingPositionControl::tecs_status_publish(float alt_sp, float equivalent_airspeed_sp,
 		float true_airspeed_derivative_raw, float throttle_trim)
@@ -611,13 +626,16 @@ FixedwingPositionControl::updateLandingAbortStatus(const uint8_t new_abort_statu
 	}
 }
 
+//获取航点的位置和航向，根据飞行任务和控制策略，动态地计算前方和后方的航点位置，并根据飞机的高度信息更新航点信息
 void
 FixedwingPositionControl::get_waypoint_heading_distance(float heading, position_setpoint_s &waypoint_prev,
 		position_setpoint_s &waypoint_next, bool flag_init)
 {
+	//获取航点位置和航向
 	position_setpoint_s temp_prev = waypoint_prev;
 	position_setpoint_s temp_next = waypoint_next;
 
+	//更新航点位置
 	if (flag_init) {
 		// previous waypoint: HDG_HOLD_SET_BACK_DIST meters behind us
 		waypoint_from_heading_and_distance(_current_latitude, _current_longitude, heading + radians(180.0f),
@@ -630,25 +648,31 @@ FixedwingPositionControl::get_waypoint_heading_distance(float heading, position_
 	} else {
 		// use the existing flight path from prev to next
 
+		//更新前方航点：将原前方航点的位置向飞行方向前移 HDG_HOLD_REACHED_DIST + HDG_HOLD_SET_BACK_DIST 距离
 		// previous waypoint: shifted HDG_HOLD_REACHED_DIST + HDG_HOLD_SET_BACK_DIST
 		create_waypoint_from_line_and_dist(waypoint_next.lat, waypoint_next.lon, waypoint_prev.lat, waypoint_prev.lon,
 						   HDG_HOLD_REACHED_DIST + HDG_HOLD_SET_BACK_DIST, &temp_prev.lat, &temp_prev.lon);
 
+		//更新后方航点：将原后方航点的位置向飞行方向后移 -(HDG_HOLD_REACHED_DIST + HDG_HOLD_DIST_NEXT) 距离
 		// next waypoint: shifted -(HDG_HOLD_DIST_NEXT + HDG_HOLD_REACHED_DIST)
 		create_waypoint_from_line_and_dist(waypoint_next.lat, waypoint_next.lon, waypoint_prev.lat, waypoint_prev.lon,
 						   -(HDG_HOLD_REACHED_DIST + HDG_HOLD_DIST_NEXT), &temp_next.lat, &temp_next.lon);
 	}
 
+	//更新高度信息
 	waypoint_prev = temp_prev;
 	waypoint_prev.alt = _current_altitude;
 
+	//更新航点信息
 	waypoint_next = temp_next;
 	waypoint_next.alt = _current_altitude;
 }
 
+//将手动控制输入转换为飞机的高度速率（爬升率或下降率）设定值
 float
 FixedwingPositionControl::getManualHeightRateSetpoint()
 {
+	//定义死区和缩放因子
 	/*
 	 * The complete range is -1..+1, so this is 6%
 	 * of the up or down range or 3% of the total range.
@@ -662,19 +686,22 @@ FixedwingPositionControl::getManualHeightRateSetpoint()
 	 */
 	const float factor = 1.0f - deadBand;
 
-	float height_rate_setpoint = 0.0f;
+	float height_rate_setpoint = 0.0f;	//初始化高度速率设定值
 
+	//根据手动控制输入计算高度速率设定值
 	/*
 	 * Manual control has as convention the rotation around
 	 * an axis. Positive X means to rotate positively around
 	 * the X axis in NED frame, which is pitching down
 	 */
 	if (_manual_control_setpoint_for_height_rate > deadBand) {
+		//手动控制输入向下（负方向）倾斜，即设定下降速率
 		/* pitching down */
 		float pitch = -(_manual_control_setpoint_for_height_rate - deadBand) / factor;
 		height_rate_setpoint = pitch * _param_sinkrate_target.get();
 
 	} else if (_manual_control_setpoint_for_height_rate < - deadBand) {
+		//手动控制输入向上（正方向）倾斜，即设定爬升速率
 		/* pitching up */
 		float pitch = -(_manual_control_setpoint_for_height_rate + deadBand) / factor;
 		const float climb_rate_target = _param_climbrate_target.get();
@@ -686,9 +713,11 @@ FixedwingPositionControl::getManualHeightRateSetpoint()
 	return height_rate_setpoint;
 }
 
+//更新手动起飞状态(判断飞机是否已经完成手动起飞)
 void
 FixedwingPositionControl::updateManualTakeoffStatus()
 {
+	//为真的条件是：飞机不在地面，并且满足可控的空速条件（大于最小空速或者空速无效）或者处于悬停状态。
 	if (!_completed_manual_takeoff) {
 		const bool at_controllable_airspeed = _airspeed > _param_fw_airspd_min.get()
 						      || !_airspeed_valid;
@@ -698,9 +727,12 @@ FixedwingPositionControl::updateManualTakeoffStatus()
 	}
 }
 
+
+//根据飞机的状态、控制模式和位置设定来更新飞行控制模式
 void
 FixedwingPositionControl::set_control_mode_current(const hrt_abstime &now)
 {
+	/*仅在固定翼模式和VTOL过渡期间运行位置控制器*/
 	/* only run position controller in fixed-wing mode and during transitions for VTOL */
 	if (_vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_ROTARY_WING && !_vehicle_status.in_transition_mode) {
 		_control_mode_current = FW_POSCTRL_MODE_OTHER;
@@ -711,11 +743,14 @@ FixedwingPositionControl::set_control_mode_current(const hrt_abstime &now)
 
 	_skipping_takeoff_detection = false;
 
+	//如果自动控制模式启用且位置控制启用，或offboard控制启用，同时当前位置设定点有效，则进入自动控制模式的逻辑
 	if (((_control_mode.flag_control_auto_enabled && _control_mode.flag_control_position_enabled) ||
 	     _control_mode.flag_control_offboard_enabled) && _position_setpoint_current_valid) {
 
+		//如果当前位置设定点的类型是起飞
 		if (_pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_TAKEOFF) {
 
+			// VTOL飞行器且正在过渡模式中
 			if (_vehicle_status.is_vtol && _vehicle_status.in_transition_mode) {
 				_control_mode_current = FW_POSCTRL_MODE_AUTO;
 
@@ -725,6 +760,7 @@ FixedwingPositionControl::set_control_mode_current(const hrt_abstime &now)
 			} else {
 				_control_mode_current = FW_POSCTRL_MODE_AUTO_TAKEOFF;
 
+				//从其他模式切换到该模式时，如果飞机已经在空中，将跳过起飞检测
 				if (commanded_position_control_mode != FW_POSCTRL_MODE_AUTO_TAKEOFF && !_landed) {
 					// skip takeoff detection when switching from any other mode, auto or manual,
 					// while already in air.
@@ -734,7 +770,7 @@ FixedwingPositionControl::set_control_mode_current(const hrt_abstime &now)
 			}
 
 		} else if (_pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_LAND) {
-
+			//如果当前位置设定点是着陆，根据前一个位置设定点是否有效，确定着陆模式是直线着陆还是圆形着陆
 			if (!_vehicle_status.in_transition_mode) {
 
 				// Use _position_setpoint_previous_valid to determine if landing should be straight or circular.
@@ -753,10 +789,12 @@ FixedwingPositionControl::set_control_mode_current(const hrt_abstime &now)
 			}
 
 		} else {
+			//非起飞、着陆点，将控制模式设置为 FW_POSCTRL_MODE_AUTO
 			_control_mode_current = FW_POSCTRL_MODE_AUTO;
 		}
 
-	} else if (_control_mode.flag_control_auto_enabled
+	} //如果自动控制模式启用且爬升率控制启用，且飞机已解锁，并且位置控制未启用，进入自动高度爬升模式的逻辑，根据条件选择爬升模式或固定斜率盘旋模式
+	else if (_control_mode.flag_control_auto_enabled
 		   && _control_mode.flag_control_climb_rate_enabled
 		   && _control_mode.flag_armed // only enter this modes if armed, as pure failsafe modes
 		   && !_control_mode.flag_control_position_enabled) {
@@ -788,30 +826,35 @@ FixedwingPositionControl::set_control_mode_current(const hrt_abstime &now)
 		}
 
 
-	} else if (_control_mode.flag_control_manual_enabled && _control_mode.flag_control_position_enabled) {
+	}//如果手动控制模式启用且位置控制启用，进入手动位置控制模式的逻辑。设置飞机的姿态角以在位置控制模式下保持稳定
+	else if (_control_mode.flag_control_manual_enabled && _control_mode.flag_control_position_enabled) {
 		if (commanded_position_control_mode != FW_POSCTRL_MODE_MANUAL_POSITION) {
 			/* Need to init because last loop iteration was in a different mode */
 			_hdg_hold_yaw = _yaw; // yaw is not controlled, so set setpoint to current yaw
 			_hdg_hold_enabled = false; // this makes sure the waypoints are reset below
 			_yaw_lock_engaged = false;
 
+			//从其他模式（自动）重置设置点，否则如果没有新的手动输入，将无法调平
 			/* reset setpoints from other modes (auto) otherwise we won't
 			 * level out without new manual input */
-			_att_sp.roll_body = _manual_control_setpoint.roll * radians(_param_fw_r_lim.get());
+			_att_sp.roll_body = _manual_control_setpoint.roll * radians(_param_fw_r_lim.get());	//FW_R_LIM最大横滚角
 			_att_sp.yaw_body = _yaw; // yaw is not controlled, so set setpoint to current yaw
 		}
 
 		_control_mode_current = FW_POSCTRL_MODE_MANUAL_POSITION;
 
-	} else if (_control_mode.flag_control_manual_enabled && _control_mode.flag_control_altitude_enabled) {
+	}//如果手动控制模式启用且高度控制启用，进入手动高度控制模式的逻辑
+	 else if (_control_mode.flag_control_manual_enabled && _control_mode.flag_control_altitude_enabled) {
 
 		_control_mode_current = FW_POSCTRL_MODE_MANUAL_ALTITUDE;
 
-	} else {
+	}//如果以上条件都不满足，则控制模式被设置为FW_POSCTRL_MODE_OTHER
+	else {
 		_control_mode_current = FW_POSCTRL_MODE_OTHER;
 	}
 }
 
+//监测飞行状态（在空中或着陆），并在进入或离开空中状态时初始化TECS控制器的状态
 void
 FixedwingPositionControl::update_in_air_states(const hrt_abstime now)
 {
@@ -866,6 +909,7 @@ FixedwingPositionControl::move_position_setpoint_for_vtol_transition(position_se
 	}
 }
 
+//自动飞行控制：根据位置设定点的类型，调用相应的自动飞行控制逻辑，包括位置控制、速度控制和环绕控制
 void
 FixedwingPositionControl::control_auto(const float control_interval, const Vector2d &curr_pos,
 				       const Vector2f &ground_speed, const position_setpoint_s &pos_sp_prev, const position_setpoint_s &pos_sp_curr,
@@ -874,35 +918,39 @@ FixedwingPositionControl::control_auto(const float control_interval, const Vecto
 	position_setpoint_s current_sp = pos_sp_curr;
 	move_position_setpoint_for_vtol_transition(current_sp);
 
+	//获取当前位置设定点的类型
 	const uint8_t position_sp_type = handle_setpoint_type(current_sp);
 
 	_position_sp_type = position_sp_type;
 
+	//如果位置设定点或当前位置设定点类型为盘旋（SETPOINT_TYPE_LOITE），则发布轨迹状态。
 	if (position_sp_type == position_setpoint_s::SETPOINT_TYPE_LOITER
 	    || current_sp.type == position_setpoint_s::SETPOINT_TYPE_LOITER) {
 		publishOrbitStatus(current_sp);
 	}
 
 	switch (position_sp_type) {
+	//如果位置设定点类型是SETPOINT_TYPE_IDLE，则将横滚角设置为0，俯仰角设置为参数FW_PSP_OFF的值，推力设置为0（VTOL机型悬停状态）
 	case position_setpoint_s::SETPOINT_TYPE_IDLE:
 		_att_sp.thrust_body[0] = 0.0f;
 		_att_sp.roll_body = 0.0f;
 		_att_sp.pitch_body = radians(_param_fw_psp_off.get());
 		break;
-
+	//如果位置设定点类型是SETPOINT_TYPE_POSITION，则进入位置自动控制逻辑
 	case position_setpoint_s::SETPOINT_TYPE_POSITION:
 		control_auto_position(control_interval, curr_pos, ground_speed, pos_sp_prev, current_sp);
 		break;
-
+	//如果位置设定点类型是SETPOINT_TYPE_VELOCITY，则进入速度自动控制逻辑
 	case position_setpoint_s::SETPOINT_TYPE_VELOCITY:
 		control_auto_velocity(control_interval, curr_pos, ground_speed, current_sp);
 		break;
-
+	//如果位置设定点类型是SETPOINT_TYPE_LOITER，则进入自动盘旋控制逻辑
 	case position_setpoint_s::SETPOINT_TYPE_LOITER:
 		control_auto_loiter(control_interval, curr_pos, ground_speed, pos_sp_prev, current_sp, pos_sp_next);
 		break;
 	}
 
+	//根据以上不同的情况，将推力输出和俯仰角输出拷贝到期望姿态结构体_att_sp中。
 	/* Copy thrust output for publication, handle special cases */
 	if (position_sp_type == position_setpoint_s::SETPOINT_TYPE_IDLE) {
 
@@ -916,16 +964,19 @@ FixedwingPositionControl::control_auto(const float control_interval, const Vecto
 	/* Copy thrust and pitch values from tecs */
 	_att_sp.pitch_body = get_tecs_pitch();
 
+	//如果不是在过渡到固定翼飞行状态中，将当前位置设定点发布出去（期望姿态在run中发布）
 	if (!_vehicle_status.in_transition_to_fw) {
 		publishLocalPositionSetpoint(current_sp);
 	}
 }
 
+//固定翼定高和定速控制部分，在盘旋状态下，通过控制高度、空速和横滚角度来维持飞机的飞行状态
 void
 FixedwingPositionControl::control_auto_fixed_bank_alt_hold(const float control_interval)
 {
 	// only control altitude and airspeed ("fixed-bank loiter")
 
+	//根据当前飞行状态、参数以及传感器数据来调整俯仰角和推力，用于高度和空速的控制
 	tecs_update_pitch_throttle(control_interval,
 				   _current_altitude,
 				   _param_fw_airspd_trim.get(),
@@ -936,9 +987,11 @@ FixedwingPositionControl::control_auto_fixed_bank_alt_hold(const float control_i
 				   _param_sinkrate_target.get(),
 				   _param_climbrate_target.get());
 
+	//将期望横滚角设置为FW_GPSF_R参数值（在自动模式下失去GPS后盘旋的横滚角），偏航角设置为0度，这是一种开环的盘旋横滚控制。这表示飞机会在盘旋状态下以固定的横滚角度飞行
 	_att_sp.roll_body = math::radians(_param_nav_gpsf_r.get()); // open loop loiter bank angle
 	_att_sp.yaw_body = 0.f;
 
+	//根据飞机的状态（是否降落）设置推力。如果飞机已经降落，则推力设为最小推力；否则，推力设为当前计算得到的推力和最大推力的较小值
 	if (_landed) {
 		_att_sp.thrust_body[0] = _param_fw_thr_min.get();
 
@@ -946,17 +999,22 @@ FixedwingPositionControl::control_auto_fixed_bank_alt_hold(const float control_i
 		_att_sp.thrust_body[0] = min(get_tecs_thrust(), _param_fw_thr_max.get());
 	}
 
+	//获取计算得到的纵向俯仰角作为期望俯仰角
 	_att_sp.pitch_body = get_tecs_pitch();
 
 }
 
+//自主模式下控制飞行器下降的高度和速度
 void
 FixedwingPositionControl::control_auto_descend(const float control_interval)
 {
+	//控制下降速率，该模式下飞行器的下降速率是硬编码的，设置为每秒下降0.5米
 	// Hard-code descend rate to 0.5m/s. This is a compromise to give the system to recover,
 	// but not letting it drift too far away.
 	const float descend_rate = -0.5f;
 
+
+	//更新飞行器的俯仰角和油门控制，以实现所需的下降速率和姿态（参数为控制周期、当前高度、空速设定值、俯仰角限制、油门限制、下降速率目标等）
 	tecs_update_pitch_throttle(control_interval,
 				   _current_altitude,
 				   _param_fw_airspd_trim.get(),
@@ -969,18 +1027,23 @@ FixedwingPositionControl::control_auto_descend(const float control_interval)
 				   false,
 				   descend_rate);
 
+	//设置横滚角和偏航角，滚转角被设置为一个开环的悬停（loiter）倾斜角
 	_att_sp.roll_body = math::radians(_param_nav_gpsf_r.get()); // open loop loiter bank angle
 	_att_sp.yaw_body = 0.f;
 
+	//设置油门
 	_att_sp.thrust_body[0] = (_landed) ? _param_fw_thr_min.get() : min(get_tecs_thrust(), _param_fw_thr_max.get());
+	//设置俯仰角
 	_att_sp.pitch_body = get_tecs_pitch();
 }
 
+//计算设定点类型
 uint8_t
 FixedwingPositionControl::handle_setpoint_type(const position_setpoint_s &pos_sp_curr)
 {
 	uint8_t position_sp_type = pos_sp_curr.type;
 
+	//检查控制模式。如果控制模式没有启用位置控制但启用了速度控制，则将位置设置点类型直接设置为速度设置点类型
 	if (!_control_mode.flag_control_position_enabled && _control_mode.flag_control_velocity_enabled) {
 		return position_setpoint_s::SETPOINT_TYPE_VELOCITY;
 	}
@@ -995,6 +1058,7 @@ FixedwingPositionControl::handle_setpoint_type(const position_setpoint_s &pos_sp
 	if (pos_sp_curr.type == position_setpoint_s::SETPOINT_TYPE_POSITION
 	    || pos_sp_curr.type == position_setpoint_s::SETPOINT_TYPE_LOITER) {
 
+		//计算当前位置设置点与飞行器位置之间的水平距离和垂直距离
 		float dist_xy = -1.f;
 		float dist_z = -1.f;
 
@@ -1010,7 +1074,7 @@ FixedwingPositionControl::handle_setpoint_type(const position_setpoint_s &pos_sp
 			if ((!_vehicle_status.in_transition_mode) && (dist >= 0.f)
 			    && (dist_z > _param_nav_fw_alt_rad.get())
 			    && (dist_xy < acc_rad || _position_sp_type == position_setpoint_s::SETPOINT_TYPE_LOITER)) {
-
+				//将位置设置点类型从SETPOINT_TYPE_POSITION切换为SETPOINT_TYPE_LOITER。即在接近位置设置点时，会切换到盘旋（loiter）模式以达到位置设定点的高度
 				// SETPOINT_TYPE_POSITION -> SETPOINT_TYPE_LOITER
 				position_sp_type = position_setpoint_s::SETPOINT_TYPE_LOITER;
 			}
@@ -1020,10 +1084,20 @@ FixedwingPositionControl::handle_setpoint_type(const position_setpoint_s &pos_sp
 	return position_sp_type;
 }
 
+//自动位置控制逻辑：根据给定的位置设定点和当前状态来计算横滚角、目标空速以及纵向控制参数（俯仰角和推力），从而使飞机在自主飞行时能够按照设定点的要求进行飞行
+/*
+ * 1）获取当前位置设定点、前一个位置设定点以及一些参数，如最小推力、最大推力、目标空速等。
+ * 2）计算当前位置和前一个位置的局部坐标。
+ * 3）根据设定点类型和飞机状态（是否为滑翔模式）设置对应的推力限制。
+ * 4）进行高度控制。使用一阶高度保持（FOH）逻辑来使飞机在接近航点时以预定的垂直速度到达目标高度。这可以使得飞机在航线过渡时更加平滑。
+ * 5）通过 _npfg 控制器生成横滚角控制指令。这个控制器使用航点信息、当前位置和风速等来计算期望的横滚角度。
+ * 6）计算目标空速，并使用 tecs_update_pitch_throttle 函数来控制飞机的俯仰角和推力。这个函数使用纵向能量管理来实现高度和空速的控制。
+ */
 void
 FixedwingPositionControl::control_auto_position(const float control_interval, const Vector2d &curr_pos,
 		const Vector2f &ground_speed, const position_setpoint_s &pos_sp_prev, const position_setpoint_s &pos_sp_curr)
 {
+	//1.获取当前位置设定点、前一个位置设定点坐标及横向距离阈值acc_rad。
 	const float acc_rad = _npfg.switchDistance(500.0f);
 	Vector2d curr_wp{0, 0};
 	Vector2d prev_wp{0, 0};
@@ -1031,6 +1105,7 @@ FixedwingPositionControl::control_auto_position(const float control_interval, co
 	/* current waypoint (the one currently heading for) */
 	curr_wp = Vector2d(pos_sp_curr.lat, pos_sp_curr.lon);
 
+	//前一个位置设定点有效并且类型不是起飞
 	if (_position_setpoint_previous_valid && pos_sp_prev.type != position_setpoint_s::SETPOINT_TYPE_TAKEOFF) {
 		prev_wp(0) = pos_sp_prev.lat;
 		prev_wp(1) = pos_sp_prev.lon;
@@ -1040,16 +1115,19 @@ FixedwingPositionControl::control_auto_position(const float control_interval, co
 		prev_wp = curr_pos;
 	}
 
+	//2.根据设定点类型和飞机状态（是否为滑翔模式）设置对应的推力限制。
 	float tecs_fw_thr_min;
 	float tecs_fw_thr_max;
 
 	if (pos_sp_curr.gliding_enabled) {
+		//滑翔模式下速度权重为2，关闭推力，无动力滑行
 		/* enable gliding with this waypoint */
 		_tecs.set_speed_weight(2.0f);
 		tecs_fw_thr_min = 0.0;
 		tecs_fw_thr_max = 0.0;
 
 	} else {
+		//非滑行模式下根据参数设置TECS的最小和最大推力
 		tecs_fw_thr_min = _param_fw_thr_min.get();
 		tecs_fw_thr_max = _param_fw_thr_max.get();
 	}
@@ -1057,16 +1135,20 @@ FixedwingPositionControl::control_auto_position(const float control_interval, co
 	// waypoint is a plain navigation waypoint
 	float position_sp_alt = pos_sp_curr.alt;
 
+	//3.进行高度控制。使用一阶高度保持（FOH）逻辑来使飞机在接近航点时以预定的垂直速度到达目标高度。这可以使得飞机在航线过渡时更加平滑
 	// Altitude first order hold (FOH)
 	if (_position_setpoint_previous_valid &&
 	    ((pos_sp_prev.type == position_setpoint_s::SETPOINT_TYPE_POSITION) ||
 	     (pos_sp_prev.type == position_setpoint_s::SETPOINT_TYPE_LOITER))
 	   ) {
+		//计算两个航路点之间的直线距离
 		const float d_curr_prev = get_distance_to_next_waypoint((double)curr_wp(0), (double)curr_wp(1),
 					  pos_sp_prev.lat, pos_sp_prev.lon);
 
+		//如果两个点的直线距离小于当前航路点的接受半径内，无法抵达，不处理
 		// Do not try to find a solution if the last waypoint is inside the acceptance radius of the current one
 		if (d_curr_prev > math::max(acc_rad, fabsf(pos_sp_curr.loiter_radius))) {
+			//计算当前航路点和当前位置的直线距离
 			// Calculate distance to current waypoint
 			const float d_curr = get_distance_to_next_waypoint((double)curr_wp(0), (double)curr_wp(1),
 					     _current_latitude, _current_longitude);
@@ -1075,9 +1157,11 @@ FixedwingPositionControl::control_auto_position(const float control_interval, co
 			// _min_current_sp_distance_xy is never larger than the distance between the current and the previous wp
 			_min_current_sp_distance_xy = math::min(d_curr, _min_current_sp_distance_xy, d_curr_prev);
 
+			//检查 _min_current_sp_distance_xy 是否大于目标航点的接受半径或者当前航点的盘旋半径。如果是，说明飞行器还没有达到目标航点。
 			// if the minimal distance is smaller than the acceptance radius, we should be at waypoint alt
 			// navigator will soon switch to the next waypoint item (if there is one) as soon as we reach this altitude
 			if (_min_current_sp_distance_xy > math::max(acc_rad, fabsf(pos_sp_curr.loiter_radius))) {
+				//使用线性插值计算一个新的高度（position_sp_alt）来确保飞行器在达到接受半径时将会位于目标航点的指定高度。计算使用了高度差（delta_alt）、斜率（grad），以及航点距离（_min_current_sp_distance_xy）
 				// The setpoint is set linearly and such that the system reaches the current altitude at the acceptance
 				// radius around the current waypoint
 				const float delta_alt = (pos_sp_curr.alt - pos_sp_prev.alt);
@@ -1089,16 +1173,20 @@ FixedwingPositionControl::control_auto_position(const float control_interval, co
 		}
 	}
 
+	//根据控制周期内的位置设定点，巡航速度和地面速度来计算目标空速
 	float target_airspeed = adapt_airspeed_setpoint(control_interval, pos_sp_curr.cruising_speed,
 				_param_fw_airspd_min.get(), ground_speed);
 
 	Vector2f curr_pos_local{_local_pos.x, _local_pos.y};
-	Vector2f curr_wp_local = _global_local_proj_ref.project(curr_wp(0), curr_wp(1));
+	Vector2f curr_wp_local = _global_local_proj_ref.project(curr_wp(0), curr_wp(1));	//使用投影将地理坐标系中的点转换为局部方位等距平面
 	Vector2f prev_wp_local = _global_local_proj_ref.project(prev_wp(0), prev_wp(1));
 
+	//4.通过_npfg控制器生成横滚角控制指令。NPFG控制器使用航点信息、当前位置和风速等来计算期望的横滚角度。
+	//根据目标空速，设置NPFG的目标空速和最大空速。NPFG（Non-Linear Path Following Guidance非线性路径跟随导航）用于引导飞行器沿着航路飞行
 	_npfg.setAirspeedNom(target_airspeed * _eas2tas);
 	_npfg.setAirspeedMax(_param_fw_airspd_max.get() * _eas2tas);
 
+	//如果启用了位置控制模式并且位置设置点中包含有效的速度指令（pos_sp_curr.vx和pos_sp_curr.vy），则导航到位置设置点并沿着路径切线飞行。
 	if (_control_mode.flag_control_offboard_enabled && PX4_ISFINITE(pos_sp_curr.vx) && PX4_ISFINITE(pos_sp_curr.vy)) {
 		// Navigate directly on position setpoint and path tangent
 		matrix::Vector2f velocity_2d(pos_sp_curr.vx, pos_sp_curr.vy);
@@ -1108,12 +1196,17 @@ FixedwingPositionControl::control_auto_position(const float control_interval, co
 				    _wind_vel, curvature);
 
 	} else {
+		//否则按照前一个航点和当前航点之间的路径进行
 		navigateWaypoints(prev_wp_local, curr_wp_local, curr_pos_local, ground_speed, _wind_vel);
 	}
 
-	_att_sp.roll_body = _npfg.getRollSetpoint();
+	//设置期望的横滚角度（根据NPFG计算的值）、期望的空速（根据NPFG计算的值）、期望的偏航角度（等于当前的偏航角）以及根据TECS计算维持期望的高度和空速的期望的俯仰角度和推力
+	_att_sp.roll_body = _npfg.getRollSetpoint();	//无论navigatePathTangent还是navigateWaypoints，都会调用guideToPath并updateRollSetpoint
+
+	//5.计算目标空速，并使用tecs_update_pitch_throttle函数来控制飞机的俯仰角和推力。
 	target_airspeed = _npfg.getAirspeedRef() / _eas2tas;
 
+	//保持当前偏航方向
 	_att_sp.yaw_body = _yaw; // yaw is not controlled, so set setpoint to current yaw
 
 	tecs_update_pitch_throttle(control_interval,
@@ -1127,16 +1220,20 @@ FixedwingPositionControl::control_auto_position(const float control_interval, co
 				   _param_climbrate_target.get());
 }
 
+//实现自动速度控制逻辑，通过控制横滚角、偏航角、俯仰角和油门来实现飞行器的速度控制，以便使其按照目标速度飞行
 void
 FixedwingPositionControl::control_auto_velocity(const float control_interval, const Vector2d &curr_pos,
 		const Vector2f &ground_speed, const position_setpoint_s &pos_sp_curr)
 {
+	//确定飞行器的最小和最大推力限制
 	float tecs_fw_thr_min;
 	float tecs_fw_thr_max;
 
 	if (pos_sp_curr.gliding_enabled) {
+		//滑翔模式下速度权重为2，关闭推力，无动力滑行
 		/* enable gliding with this waypoint */
 		_tecs.set_speed_weight(2.0f);
+
 		tecs_fw_thr_min = 0.0;
 		tecs_fw_thr_max = 0.0;
 
@@ -1153,17 +1250,19 @@ FixedwingPositionControl::control_auto_velocity(const float control_interval, co
 	Vector2f target_velocity{pos_sp_curr.vx, pos_sp_curr.vy};
 	_target_bearing = wrap_pi(atan2f(target_velocity(1), target_velocity(0)));
 
+	//计算目标空速
 	float target_airspeed = adapt_airspeed_setpoint(control_interval, pos_sp_curr.cruising_speed,
 				_param_fw_airspd_min.get(), ground_speed);
 
 	Vector2f curr_pos_local{_local_pos.x, _local_pos.y};
 	_npfg.setAirspeedNom(target_airspeed * _eas2tas);
 	_npfg.setAirspeedMax(_param_fw_airspd_max.get() * _eas2tas);
+	//导航到目标航向角
 	navigateBearing(curr_pos_local, _target_bearing, ground_speed, _wind_vel);
 	_att_sp.roll_body = _npfg.getRollSetpoint();
 	target_airspeed = _npfg.getAirspeedRef() / _eas2tas;
 
-	_att_sp.yaw_body = _yaw;
+	_att_sp.yaw_body = _yaw;	//保持当前偏航方向
 
 	tecs_update_pitch_throttle(control_interval,
 				   position_sp_alt,
@@ -1178,28 +1277,33 @@ FixedwingPositionControl::control_auto_velocity(const float control_interval, co
 				   pos_sp_curr.vz);
 }
 
+//实现了飞行器在盘旋模式下的自动控制，包括根据指定的航点信息执行盘旋、控制空速和高度等功能
 void
 FixedwingPositionControl::control_auto_loiter(const float control_interval, const Vector2d &curr_pos,
 		const Vector2f &ground_speed, const position_setpoint_s &pos_sp_prev, const position_setpoint_s &pos_sp_curr,
 		const position_setpoint_s &pos_sp_next)
 {
+	//1.确定当前航点curr_wp
 	Vector2d curr_wp{0, 0};
 	Vector2d prev_wp{0, 0};
 
 	/* current waypoint (the one currently heading for) */
 	curr_wp = Vector2d(pos_sp_curr.lat, pos_sp_curr.lon);
 
+	//如果存在有效的前一航点，且类型不是起飞
 	if (_position_setpoint_previous_valid && pos_sp_prev.type != position_setpoint_s::SETPOINT_TYPE_TAKEOFF) {
 		prev_wp(0) = pos_sp_prev.lat;
 		prev_wp(1) = pos_sp_prev.lon;
 
 	} else {
+		//否则将当前位置设为前一航点
 		// No valid previous waypoint, go along the line between aircraft and current waypoint
 		prev_wp = curr_pos;
 	}
 
 	float airspeed_sp = -1.f;
 
+	//如果巡航速度有效，设置为期望空速，否则在下面设置为FW_AIRSPD_MIN参数的值
 	if (PX4_ISFINITE(pos_sp_curr.cruising_speed) &&
 	    pos_sp_curr.cruising_speed > FLT_EPSILON) {
 
@@ -1210,6 +1314,7 @@ FixedwingPositionControl::control_auto_loiter(const float control_interval, cons
 	float tecs_fw_thr_max;
 
 	if (pos_sp_curr.gliding_enabled) {
+		//滑翔模式下速度权重为2，关闭推力，无动力滑行
 		/* enable gliding with this waypoint */
 		_tecs.set_speed_weight(2.0f);
 		tecs_fw_thr_min = 0.0;
@@ -1220,6 +1325,7 @@ FixedwingPositionControl::control_auto_loiter(const float control_interval, cons
 		tecs_fw_thr_max = _param_fw_thr_max.get();
 	}
 
+	//计算盘旋半径（如果无效则使用NAV_LOITER_RAD参数值）
 	/* waypoint is a loiter waypoint */
 	float loiter_radius = pos_sp_curr.loiter_radius;
 
@@ -1233,6 +1339,7 @@ FixedwingPositionControl::control_auto_loiter(const float control_interval, cons
 
 	const bool close_to_circle = vehicle_to_loiter_center.norm() < loiter_radius + _npfg.switchDistance(500);
 
+	//如果下一航点为着陆，则启用着陆控制（襟翼、着陆空速、高度控制），这样就不必在接近地面的地方进行这种切换（这可能会导致严重的高度误差）
 	if (pos_sp_next.type == position_setpoint_s::SETPOINT_TYPE_LAND && _position_setpoint_next_valid
 	    && close_to_circle && _param_fw_lnd_earlycfg.get()) {
 		// We're in a loiter directly before a landing WP. Enable our landing configuration (flaps,
@@ -1245,17 +1352,20 @@ FixedwingPositionControl::control_auto_loiter(const float control_interval, cons
 		_new_landing_gear_position = landing_gear_s::GEAR_DOWN;
 	}
 
+	//计算目标空速和横滚角，使飞行器按照计算的盘旋控制策略进行横滚
 	float target_airspeed = adapt_airspeed_setpoint(control_interval, airspeed_sp, _param_fw_airspd_min.get(),
 				ground_speed);
 
 	_npfg.setAirspeedNom(target_airspeed * _eas2tas);
 	_npfg.setAirspeedMax(_param_fw_airspd_max.get() * _eas2tas);
+	//进行盘旋控制
 	navigateLoiter(curr_wp_local, curr_pos_local, loiter_radius, pos_sp_curr.loiter_direction_counter_clockwise,
 		       ground_speed,
 		       _wind_vel);
 	_att_sp.roll_body = _npfg.getRollSetpoint();
 	target_airspeed = _npfg.getAirspeedRef() / _eas2tas;
 
+	//保持当前偏航方向
 	_att_sp.yaw_body = _yaw; // yaw is not controlled, so set setpoint to current yaw
 
 	float alt_sp = pos_sp_curr.alt;
@@ -1273,6 +1383,7 @@ FixedwingPositionControl::control_auto_loiter(const float control_interval, cons
 		_tecs.set_altitude_error_time_constant(_param_fw_thrtc_sc.get() * _param_fw_t_h_error_tc.get());
 	}
 
+	//使用tecs_update_pitch_throttle函数来控制飞机的俯仰角和推力
 	tecs_update_pitch_throttle(control_interval,
 				   alt_sp,
 				   target_airspeed,
@@ -1284,6 +1395,7 @@ FixedwingPositionControl::control_auto_loiter(const float control_interval, cons
 				   _param_climbrate_target.get());
 }
 
+//根据不同的起飞方式（跑道起飞或抛射起飞）来控制固定翼飞行器的起飞过程，飞机的横滚、俯仰、油门等参数会根据控制逻辑来进行计算和调整，以实现安全的起飞行为
 void
 FixedwingPositionControl::control_auto_takeoff(const hrt_abstime &now, const float control_interval,
 		const Vector2d &global_position, const Vector2f &ground_speed, const position_setpoint_s &pos_sp_curr)
@@ -1316,6 +1428,11 @@ FixedwingPositionControl::control_auto_takeoff(const hrt_abstime &now, const flo
 	float target_airspeed = adapt_airspeed_setpoint(control_interval, takeoff_airspeed, adjusted_min_airspeed,
 				ground_speed);
 
+	//如果使用跑道起飞：
+	//·初始化或更新跑道起飞状态，包括yaw、roll、pitch等参数
+	//·控制起飞阶段的飞行，包括根据起飞方向控制横滚角、俯仰角以及计算并应用控制舵面
+	//·控制飞机的起飞行为，包括横滚、俯仰和油门的控制，以及地面飞行的各种参数设置
+	//·根据起飞状态控制是否缩起起落架
 	if (_runway_takeoff.runwayTakeoffEnabled()) {
 		if (!_runway_takeoff.isInitialized()) {
 			_runway_takeoff.init(now, _yaw, global_position);
@@ -1411,6 +1528,11 @@ FixedwingPositionControl::control_auto_takeoff(const hrt_abstime &now, const flo
 		}
 
 	} else {
+	//如果没有使用跑道起飞功能
+	//·检测起飞是否已被探测到
+	//·如果起飞已被探测到，通过导航路径（path tangent）控制飞机的飞行，包括横滚、俯仰、油门等参数的计算
+	//·如果未探测到起飞，将横滚设置为0，俯仰设置为最小起飞俯仰角，并将油门设置为怠速
+	//·将起飞探测状态发布到 launch_detection_status 主题中
 		/* Perform launch detection */
 		if (!_skipping_takeoff_detection && _param_fw_laun_detcn_on.get() &&
 		    _launchDetector.getLaunchDetected() < launch_detection_status_s::STATE_FLYING) {
@@ -1937,16 +2059,21 @@ FixedwingPositionControl::control_auto_landing_circular(const hrt_abstime &now, 
 	publishOrbitStatus(pos_sp_curr);
 }
 
+//手动模式下的高度控制，包括根据手动设定的空速和高度速率来计算期望的俯仰角和推力，并将其传递给飞控系统以实现高度控制
 void
 FixedwingPositionControl::control_manual_altitude(const float control_interval, const Vector2d &curr_pos,
 		const Vector2f &ground_speed)
 {
+	//更新手动起飞状态(判断飞机是否已经完成手动起飞)
 	updateManualTakeoffStatus();
 
+	//计算校准后的空速设定点
 	const float calibrated_airspeed_sp = adapt_airspeed_setpoint(control_interval, get_manual_airspeed_setpoint(),
 					     _param_fw_airspd_min.get(), ground_speed);
+	//将手动控制输入转换为飞机的高度速率（爬升率或下降率）设定值
 	const float height_rate_sp = getManualHeightRateSetpoint();
 
+	//如果已完成起飞且速度不足，TECS可能会尝试降低俯仰以获得空速，如果刚起飞，则在速度不足时限制俯仰
 	// TECS may try to pitch down to gain airspeed if we underspeed, constrain the pitch when underspeeding if we are
 	// just passed launch
 	const float min_pitch = (_completed_manual_takeoff) ? radians(_param_fw_p_lim_min.get()) :
@@ -1959,6 +2086,7 @@ FixedwingPositionControl::control_manual_altitude(const float control_interval, 
 		throttle_max = 0.0f;
 	}
 
+	//使用 TECS（纵向控制系统）来执行高度控制
 	tecs_update_pitch_throttle(control_interval,
 				   _current_altitude,
 				   calibrated_airspeed_sp,
@@ -1971,6 +2099,7 @@ FixedwingPositionControl::control_manual_altitude(const float control_interval, 
 				   false,
 				   height_rate_sp);
 
+	//将期望姿态中的横滚角设置为手动控制中的横滚角度，并乘以FW_R_LIM参数，不对偏航角进行控制，俯仰角和推力设置为TECS输出值
 	_att_sp.roll_body = _manual_control_setpoint.roll * radians(_param_fw_r_lim.get());
 	_att_sp.yaw_body = _yaw; // yaw is not controlled, so set setpoint to current yaw
 
@@ -1978,6 +2107,7 @@ FixedwingPositionControl::control_manual_altitude(const float control_interval, 
 	_att_sp.pitch_body = get_tecs_pitch();
 }
 
+//实现手动模式下的位置控制，包括根据手动设定的空速和位置设定来计算期望的俯仰角和推力，并将其传递给飞控系统以实现位置控制
 void
 FixedwingPositionControl::control_manual_position(const float control_interval, const Vector2d &curr_pos,
 		const Vector2f &ground_speed)
@@ -2093,7 +2223,7 @@ float
 FixedwingPositionControl::get_tecs_pitch()
 {
 	if (_tecs_is_running) {
-		return _tecs.get_pitch_setpoint() + radians(_param_fw_psp_off.get());
+		return _tecs.get_pitch_setpoint() + radians(_param_fw_psp_off.get());	//FW_PSP_OFF俯仰角设定点偏移
 	}
 
 	// return level flight pitch offset to prevent stale tecs state when it's not running
@@ -2111,6 +2241,7 @@ FixedwingPositionControl::get_tecs_thrust()
 	return 0.0f;
 }
 
+//固定翼飞行器的位置控制循环，根据飞行器的位置、控制模式和传感器数据来执行位置控制，生成相应的姿态设定点，根据不同的飞行模式，选择相应的控制器来执行飞行任务
 void
 FixedwingPositionControl::Run()
 {
@@ -2124,12 +2255,14 @@ FixedwingPositionControl::Run()
 
 	/* only run controller if position changed */
 
+	//位置更新检查
 	if (_local_pos_sub.update(&_local_pos)) {
 
 		const float control_interval = math::constrain((_local_pos.timestamp - _last_time_position_control_called) * 1e-6f,
 					       MIN_AUTO_TIMESTEP, MAX_AUTO_TIMESTEP);
 		_last_time_position_control_called = _local_pos.timestamp;
 
+		//更新参数
 		// check for parameter updates
 		if (_parameter_update_sub.updated()) {
 			// clear update
@@ -2140,6 +2273,7 @@ FixedwingPositionControl::Run()
 			parameters_update();
 		}
 
+		//更新全球位置信息，包括当前的纬度和经度
 		vehicle_global_position_s gpos;
 
 		if (_global_pos_sub.update(&gpos)) {
@@ -2147,15 +2281,19 @@ FixedwingPositionControl::Run()
 			_current_longitude = gpos.lon;
 		}
 
+		//计算当前海拔高度
 		_current_altitude = -_local_pos.z + _local_pos.ref_alt; // Altitude AMSL in meters
 
 		// handle estimator reset events. we only adjust setpoins for manual modes
 		if (_control_mode.flag_control_manual_enabled) {
+			//定高、位置模式下，使用TECS处理步进高度
 			if (_control_mode.flag_control_altitude_enabled && _local_pos.vz_reset_counter != _alt_reset_counter) {
+				//估计系统重置飞行高度时，通过逐渐调整飞行器的高度，使重置过程更加平滑，避免突然的高度变化，确保飞行器在高度变化时能够平稳过渡
 				// make TECS accept step in altitude and demanded altitude
 				_tecs.handle_alt_step(_current_altitude, -_local_pos.vz);
 			}
 
+			//位置模式下，调整导航航路点，重置航向保持标志，以重新初始化位置控制器
 			// adjust navigation waypoints in position control mode
 			if (_control_mode.flag_control_altitude_enabled && _control_mode.flag_control_velocity_enabled
 			    && _local_pos.vxy_reset_counter != _pos_reset_counter) {
@@ -2165,10 +2303,12 @@ FixedwingPositionControl::Run()
 			}
 		}
 
+		//更新复位计数器以匹配本地位置的复位计数器
 		// update the reset counters in any case
 		_alt_reset_counter = _local_pos.vz_reset_counter;
 		_pos_reset_counter = _local_pos.vxy_reset_counter;
 
+		//将本地设定点转换为全局设定点（初始化全球本地投影参考坐标系，并更新全局本地坐标系的参考高度）
 		// Convert Local setpoints to global setpoints
 		if (!_global_local_proj_ref.isInitialized()
 		    || (_global_local_proj_ref.getProjectionReferenceTimestamp() != _local_pos.ref_timestamp)
@@ -2179,6 +2319,7 @@ FixedwingPositionControl::Run()
 			_global_local_alt0 = _local_pos.ref_alt;
 		}
 
+		//offboard模式下获取轨迹设定点，并将其转换为全局坐标系中的位置和速度设定点，用于位置控制
 		if (_control_mode.flag_control_offboard_enabled) {
 			trajectory_setpoint_s trajectory_setpoint;
 
@@ -2187,7 +2328,7 @@ FixedwingPositionControl::Run()
 				_pos_sp_triplet = {}; // clear any existing
 				_pos_sp_triplet.timestamp = trajectory_setpoint.timestamp;
 				_pos_sp_triplet.current.timestamp = trajectory_setpoint.timestamp;
-				_pos_sp_triplet.current.cruising_speed = NAN; // ignored
+				_pos_sp_triplet.current.cruising_speed = NAN;	// ignored
 				_pos_sp_triplet.current.cruising_throttle = NAN; // ignored
 				_pos_sp_triplet.current.vx = NAN;
 				_pos_sp_triplet.current.vy = NAN;
@@ -2235,7 +2376,9 @@ FixedwingPositionControl::Run()
 				_position_setpoint_current_valid = valid_setpoint;
 			}
 
-		} else {
+		}
+		else {
+			//如果位置设定点三元组有更新，检查当前、前一个和下一个设定点是否有效，同时重置水平速度的一阶高度保持逻辑
 			if (_pos_sp_triplet_sub.update(&_pos_sp_triplet)) {
 
 				_position_setpoint_previous_valid = PX4_ISFINITE(_pos_sp_triplet.previous.lat)
@@ -2255,19 +2398,21 @@ FixedwingPositionControl::Run()
 			}
 		}
 
-		airspeed_poll();
-		manual_control_setpoint_poll();
-		vehicle_attitude_poll();
-		vehicle_command_poll();
-		vehicle_control_mode_poll();
-		wind_poll();
+		airspeed_poll();		//获取空速信息，更新飞行控制中的空速状态
+		manual_control_setpoint_poll();	//获取来自遥控器的手动控制指令
+		vehicle_attitude_poll();	//获取飞行姿态信息
+		vehicle_command_poll();		//获取来自飞控系统的指令
+		vehicle_control_mode_poll();	//监视飞行器的控制模式
+		wind_poll();			//获取风速信息
 
+		//更新气动数据，包括空气密度
 		vehicle_air_data_s air_data;
 
 		if (_vehicle_air_data_sub.update(&air_data)) {
 			_air_density = PX4_ISFINITE(air_data.rho) ? air_data.rho : _air_density;
 		}
 
+		//降落检测
 		if (_vehicle_land_detected_sub.updated()) {
 			vehicle_land_detected_s vehicle_land_detected;
 
@@ -2276,18 +2421,23 @@ FixedwingPositionControl::Run()
 			}
 		}
 
+		//更新飞行器状态
 		_vehicle_status_sub.update(&_vehicle_status);
 
+		//根据当前纬度、经度、本地水平速度等信息创建向量并传递给位置控制器
 		Vector2d curr_pos(_current_latitude, _current_longitude);
 		Vector2f ground_speed(_local_pos.vx, _local_pos.vy);
 
+		//更新飞行模式和TECS控制器状态
 		set_control_mode_current(_local_pos.timestamp);
 
 		update_in_air_states(_local_pos.timestamp);
 
+		//更新导航引导器（_npfg）的时间步长
 		// update lateral guidance timesteps for slewrates
 		_npfg.setDt(control_interval);
 
+		//设置TECS 参数和侧向导航参数
 		// restore nominal TECS parameters in case changed intermittently (e.g. in landing handling)
 		_tecs.set_speed_weight(_param_fw_t_spdweight.get());
 		_tecs.set_altitude_error_time_constant(_param_fw_t_h_error_tc.get());
@@ -2301,12 +2451,15 @@ FixedwingPositionControl::Run()
 		_flaps_setpoint = 0.f;
 		_spoilers_setpoint = 0.f;
 
+		//默认情况下，不希望偏航直接由方向舵控制
 		// by default we don't want yaw to be contoller directly with rudder
 		_att_sp.fw_control_yaw_wheel = false;
 
+		//默认为零-用于在自动起飞过程中通过偏航操纵杆将前轮直接转向传递给执行器
 		// default to zero - is used (IN A HACKY WAY) to pass direct nose wheel steering via yaw stick to the actuators during auto takeoff
 		_att_sp.yaw_sp_move_rate = 0.0f;
 
+		//根据不同的飞行模式选择相应的飞行控制器，包括自动控制、手动控制、着陆和起飞控制等
 		if (_control_mode_current != FW_POSCTRL_MODE_AUTO_LANDING_STRAIGHT
 		    && _control_mode_current != FW_POSCTRL_MODE_AUTO_LANDING_CIRCULAR) {
 			reset_landing_state();
@@ -2319,6 +2472,7 @@ FixedwingPositionControl::Run()
 		int8_t old_landing_gear_position = _new_landing_gear_position;
 		_new_landing_gear_position = landing_gear_s::GEAR_KEEP; // is overwritten in Takeoff and Land
 
+		//根据当前飞行模式，执行不同的控制逻辑
 		switch (_control_mode_current) {
 		case FW_POSCTRL_MODE_AUTO: {
 				control_auto(control_interval, curr_pos, ground_speed, _pos_sp_triplet.previous, _pos_sp_triplet.current,
@@ -2372,6 +2526,7 @@ FixedwingPositionControl::Run()
 
 		}
 
+		//将计算得到的控制指令和期望姿态发布到飞控系统（如姿态控制器中订阅）
 		if (_control_mode_current != FW_POSCTRL_MODE_OTHER) {
 
 			if (_control_mode.flag_control_manual_enabled) {
@@ -2391,6 +2546,7 @@ FixedwingPositionControl::Run()
 				q.copyTo(_att_sp.q_d);
 
 				_att_sp.timestamp = hrt_absolute_time();
+				//发布期望姿态
 				_attitude_sp_pub.publish(_att_sp);
 
 				// only publish status in full FW mode
@@ -2402,6 +2558,7 @@ FixedwingPositionControl::Run()
 			}
 		}
 
+		//如果起落架位置发生变化，发布新的起落架位置
 		// if there's any change in landing gear setpoint publish it
 		if (_new_landing_gear_position != old_landing_gear_position
 		    && _new_landing_gear_position != landing_gear_s::GEAR_KEEP) {
@@ -2412,6 +2569,7 @@ FixedwingPositionControl::Run()
 			_landing_gear_pub.publish(landing_gear);
 		}
 
+		//如果在自动飞行模式下且飞机类型为固定翼，发布襟翼和扰流板控制指令
 		// In Manual modes flaps and spoilers are directly controlled in the Attitude controller and not published here
 		if (_control_mode.flag_control_auto_enabled
 		    && _vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_FIXED_WING) {
@@ -2442,6 +2600,7 @@ FixedwingPositionControl::reset_takeoff_state()
 	_takeoff_ground_alt = _current_altitude;
 }
 
+//重置固定翼飞行器的着陆状态，包括各种与着陆相关的变量和状态
 void
 FixedwingPositionControl::reset_landing_state()
 {
@@ -2502,6 +2661,7 @@ float FixedwingPositionControl::calculateTrimThrottle(float throttle_min,
 	return math::constrain(throttle_trim * sqrtf(weight_ratio) * air_density_throttle_scale, throttle_min, throttle_max);
 }
 
+//总能量控制系统实现：更新TECS控制状态，调整飞机的俯仰角和油门，以实现目标高度和空速的控制
 void
 FixedwingPositionControl::tecs_update_pitch_throttle(const float control_interval, float alt_sp, float airspeed_sp,
 		float pitch_min_rad, float pitch_max_rad, float throttle_min, float throttle_max,
@@ -2510,6 +2670,7 @@ FixedwingPositionControl::tecs_update_pitch_throttle(const float control_interva
 {
 	_tecs_is_running = true;
 
+	//只在固定翼模式下运行TECS
 	// do not run TECS if vehicle is a VTOL and we are in rotary wing mode or in transition
 	// (it should also not run during VTOL blending because airspeed is too low still)
 	if (_vehicle_status.is_vtol) {
@@ -2553,6 +2714,8 @@ FixedwingPositionControl::tecs_update_pitch_throttle(const float control_interva
 		return;
 	}
 
+
+	//如果需要重新初始化 TECS（例如飞机刚刚解锁或者上述条件满足），代码会使用当前的高度、垂直速度、空速等信息来初始化TECS状态
 	// We need an altitude lock to calculate the TECS control
 	if (_local_pos.timestamp == 0) {
 		_reinitialize_tecs = true;
@@ -2563,6 +2726,7 @@ FixedwingPositionControl::tecs_update_pitch_throttle(const float control_interva
 		_reinitialize_tecs = false;
 	}
 
+	//根据飞机是否着陆，设置是否启用空速保护
 	/* No underspeed protection in landing mode */
 	_tecs.set_detect_underspeed_enabled(!disable_underspeed_detection);
 
@@ -2574,6 +2738,7 @@ FixedwingPositionControl::tecs_update_pitch_throttle(const float control_interva
 	const float throttle_trim_adjusted = calculateTrimThrottle(throttle_min,
 					     throttle_max, airspeed_sp);
 
+	//TECS更新：代码会使用TECS控制器更新当前的俯仰角、高度、目标高度、目标空速、当前空速等信息，从而计算出下一步的俯仰角和油门控制指令
 	// HOTFIX: the airspeed rate estimate using acceleration in body-forward direction has shown to lead to high biases
 	// when flying tight turns. It's in this case much safer to just set the estimated airspeed rate to 0.
 	const float airspeed_rate_estimate = 0.f;
@@ -2596,6 +2761,7 @@ FixedwingPositionControl::tecs_update_pitch_throttle(const float control_interva
 		     -_local_pos.vz,
 		     hgt_rate_sp);
 
+	//发布TECS状态：将TECS控制器的状态信息发布出去，包括目标高度、目标空速、空速率估计等
 	tecs_status_publish(alt_sp, airspeed_sp, airspeed_rate_estimate, throttle_trim_adjusted);
 }
 
@@ -2840,16 +3006,20 @@ void FixedwingPositionControl::publishOrbitStatus(const position_setpoint_s pos_
 	_orbit_status_pub.publish(orbit_status);
 }
 
+//根据当前位置和目标航点来计算飞行器的导航航向角，以便它可以沿着给定的路径飞行
 void FixedwingPositionControl::navigateWaypoints(const Vector2f &waypoint_A, const Vector2f &waypoint_B,
 		const Vector2f &vehicle_pos, const Vector2f &ground_vel, const Vector2f &wind_vel)
 {
+	//类似于ECL_L1_Pos_Controller类中navigate_waypoints方法中的逻辑，但没有任意的最大接近角，接近完全由生成的方位矢量决定
 	// similar to logic found in ECL_L1_Pos_Controller method of same name
 	// BUT no arbitrary max approach angle, approach entirely determined by generated
 	// bearing vectors
 
+	//计算从航点A到航点B的向量vector_A_to_B，以及从航点A到飞行器当前位置的向量
 	Vector2f vector_A_to_B = waypoint_B - waypoint_A;
 	Vector2f vector_A_to_vehicle = vehicle_pos - waypoint_A;
 
+	//如果航点A和航点B非常接近，则认为它们是重叠的航路点，飞行器应该直接飞往这个航点。如果飞行器已经非常接近航点A，那么它将保持当前控制状态，不更新npfg库的输出，即不更新导航控制。
 	if (vector_A_to_B.norm() < FLT_EPSILON) {
 		// the waypoints are on top of each other and should be considered as a
 		// single waypoint, fly directly to it
@@ -2862,7 +3032,8 @@ void FixedwingPositionControl::navigateWaypoints(const Vector2f &waypoint_A, con
 		}
 
 
-	} else if ((vector_A_to_B.dot(vector_A_to_vehicle) < -FLT_EPSILON)) {
+	}//如果飞行器位于航点A的前方（向量vector_A_to_B和向量 vector_A_to_vehicle的点积为负值），那么飞行器会直接飞向航点A，直到它位于“切换距离阈值”以内
+	else if ((vector_A_to_B.dot(vector_A_to_vehicle) < -FLT_EPSILON)) {
 		// we are in front of waypoint A, fly directly to it until we are within switch distance.
 
 		if (vector_A_to_vehicle.norm() > _npfg.switchDistance(500.0f)) {
@@ -2870,6 +3041,7 @@ void FixedwingPositionControl::navigateWaypoints(const Vector2f &waypoint_A, con
 		}
 	}
 
+	//跟踪航点A和航点B之间的线段。首先计算单位切线向量unit_path_tangent，该向量与航点A和航点B之间的线段平行。然后计算目标航向角_target_bearing，以便导航控制可以引导飞行器沿着这个线段飞行
 	// track the line segment
 	Vector2f unit_path_tangent{vector_A_to_B.normalized()};
 	_target_bearing = atan2f(unit_path_tangent(1), unit_path_tangent(0));
@@ -2877,26 +3049,33 @@ void FixedwingPositionControl::navigateWaypoints(const Vector2f &waypoint_A, con
 	_npfg.guideToPath(vehicle_pos, ground_vel, wind_vel, unit_path_tangent, waypoint_A, 0.0f);
 } // navigateWaypoints
 
+//实现盘旋模式下的导航控制，包括确定盘旋路径的方向和半径，以及根据当前位置和速度控制飞行器沿着盘旋路径飞行
 void FixedwingPositionControl::navigateLoiter(const Vector2f &loiter_center, const Vector2f &vehicle_pos,
 		float radius, bool loiter_direction_counter_clockwise, const Vector2f &ground_vel, const Vector2f &wind_vel)
 {
 	const float loiter_direction_multiplier = loiter_direction_counter_clockwise ? -1.f : 1.f;
 
+	//计算从飞行器位置到盘旋中心的向量vector_center_to_vehicle
 	Vector2f vector_center_to_vehicle = vehicle_pos - loiter_center;
+	//计算飞行器到盘旋中心的距离dist_to_center
 	const float dist_to_center = vector_center_to_vehicle.norm();
 
+	//根据距离dist_to_center，确定从盘旋中心到圆周上最近点的单位向量unit_vec_center_to_closest_pt
 	// find the direction from the circle center to the closest point on its perimeter
 	// from the vehicle position
 	Vector2f unit_vec_center_to_closest_pt;
 
 	if (dist_to_center < 0.1f) {
+		//如果距离接近零，表示飞行器在盘旋中心附近，代码会采取一些策略来避免出现问题
 		// the logic breaks down at the circle center, employ some mitigation strategies
 		// until we exit this region
 		if (ground_vel.norm() < 0.1f) {
+			//如果地面速度接近零，将单位向量设置为北向（1, 0）方向
 			// arbitrarily set the point in the northern top of the circle
 			unit_vec_center_to_closest_pt = Vector2f{1.0f, 0.0f};
 
 		} else {
+			//否则，将单位向量设置为当前地面速度的归一化值
 			// set the point in the direction we are moving
 			unit_vec_center_to_closest_pt = ground_vel.normalized();
 		}
@@ -2906,28 +3085,39 @@ void FixedwingPositionControl::navigateLoiter(const Vector2f &loiter_center, con
 		unit_vec_center_to_closest_pt = vector_center_to_vehicle.normalized();
 	}
 
+	//根据盘旋方向（顺时针或逆时针）和盘旋中心到圆周上最近点单位向量 unit_vec_center_to_closest_pt，计算盘旋路径的切线方向单位向量unit_path_tangent
 	// 90 deg clockwise rotation * loiter direction
 	const Vector2f unit_path_tangent = loiter_direction_multiplier * Vector2f{-unit_vec_center_to_closest_pt(1), unit_vec_center_to_closest_pt(0)};
 
+	//计算路径曲率path_curvature：盘旋方向（顺时针或逆时针）除以半径
 	float path_curvature = loiter_direction_multiplier / radius;
+	//计算目标方位角_target_bearing，它表示盘旋路径的方向。
 	_target_bearing = atan2f(unit_path_tangent(1), unit_path_tangent(0));
+	//计算最近点上的位置_closest_point_on_path，它是飞行器当前位置到盘旋路径上最近点的距离
 	_closest_point_on_path = unit_vec_center_to_closest_pt * radius + loiter_center;
+	//调用_npfg.guideToPath方法实现飞行器按照指定的盘旋路径飞行
 	_npfg.guideToPath(vehicle_pos, ground_vel, wind_vel, unit_path_tangent,
 			  loiter_center + unit_vec_center_to_closest_pt * radius, path_curvature);
 } // navigateLoiter
 
 
+//实现飞行器沿着给定路径的切线导航
 void FixedwingPositionControl::navigatePathTangent(const matrix::Vector2f &vehicle_pos,
 		const matrix::Vector2f &position_setpoint,
 		const matrix::Vector2f &tangent_setpoint,
 		const matrix::Vector2f &ground_vel, const matrix::Vector2f &wind_vel, const float &curvature)
 {
+	//首先计算单位切线向量unit_path_tangent，这个向量表示了路径的方向
 	const Vector2f unit_path_tangent{tangent_setpoint.normalized()};
+	//计算目标航向角_target_bearing，该航向角指向路径的切线方向。这个航向角将用于导航控制，以便飞行器可以跟随路径
 	_target_bearing = atan2f(unit_path_tangent(1), unit_path_tangent(0));
+	//计算最接近路径的点_closest_point_on_path，这个点是飞行器当前位置到路径上的最近点
 	_closest_point_on_path = position_setpoint;
+	//调用_npfg.guideToPath方法将飞行器引导到路径上
 	_npfg.guideToPath(vehicle_pos, ground_vel, wind_vel, tangent_setpoint.normalized(), position_setpoint, curvature);
 } // navigatePathTangent
 
+//将飞行器导航到指定的航向角，以实现飞行方向的控制
 void FixedwingPositionControl::navigateBearing(const matrix::Vector2f &vehicle_pos, float bearing,
 		const Vector2f &ground_vel, const Vector2f &wind_vel)
 {

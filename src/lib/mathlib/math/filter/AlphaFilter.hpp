@@ -116,6 +116,7 @@ public:
 	float getCutoffFreq() const { return _cutoff_freq; }
 
 protected:
+	//遥控器横滚、俯仰通道低通滤波(指数加权移动平均EMA,用于计算滤波器的下一个状态。其中，_alpha是滤波器的平滑系数，_filter_state是当前状态，sample是新的输入值。函数返回新的滤波器状态。)
 	T updateCalculation(const T &sample) { return (1.f - _alpha) * _filter_state + _alpha * sample; }
 
 	float _cutoff_freq{0.f};

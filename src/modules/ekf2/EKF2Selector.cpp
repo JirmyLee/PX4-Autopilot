@@ -415,6 +415,7 @@ void EKF2Selector::PublishVehicleAttitude()
 	}
 }
 
+//从飞行估计器中获取本地飞行位置数据，并根据需要进行发布
 void EKF2Selector::PublishVehicleLocalPosition()
 {
 	// selected estimator_local_position -> vehicle_local_position

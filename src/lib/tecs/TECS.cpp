@@ -319,6 +319,7 @@ float TECSControl::_calcAirspeedControlOutput(const Setpoint &setpoint, const In
 	return airspeed_rate_output;
 }
 
+//计算高度控制输出
 float TECSControl::_calcAltitudeControlOutput(const Setpoint &setpoint, const Input &input, const Param &param) const
 {
 	float altitude_rate_output;
@@ -374,6 +375,7 @@ TECSControl::SpecificEnergyWeighting TECSControl::_updateSpeedAltitudeWeights(co
 {
 
 	SpecificEnergyWeighting weight;
+	//计算用于控制比动能误差的权重
 	// Calculate the weight applied to control of specific kinetic energy error
 	float pitch_speed_weight = constrain(param.pitch_speed_weight, 0.0f, 2.0f);
 
@@ -676,6 +678,7 @@ void TECS::initialize(const float altitude, const float altitude_rate, const flo
 	_update_timestamp = hrt_absolute_time();
 }
 
+//更新TECS控制器的状态：根据输入的参数和当前状态计算出下一步的高度和空速控制指令，用于调整飞机的俯仰角和油门，以实现所需的飞行高度和空速
 void TECS::update(float pitch, float altitude, float hgt_setpoint, float EAS_setpoint, float equivalent_airspeed,
 		  float eas_to_tas, float throttle_min, float throttle_setpoint_max,
 		  float throttle_trim, float throttle_trim_adjusted, float pitch_limit_min, float pitch_limit_max, float target_climbrate,
@@ -686,6 +689,7 @@ void TECS::update(float pitch, float altitude, float hgt_setpoint, float EAS_set
 	const hrt_abstime now(hrt_absolute_time());
 	const float dt = static_cast<float>((now - _update_timestamp)) / 1_s;
 
+	//更新参数：根据输入的参数，更新TECS的参考模型和控制参数，包括目标爬升率、目标下降率、最小空速、俯仰角、油门值等
 	// Update parameters from input
 	// Reference model
 	_reference_param.target_climbrate = target_climbrate;
@@ -699,6 +703,7 @@ void TECS::update(float pitch, float altitude, float hgt_setpoint, float EAS_set
 	_control_param.throttle_max = throttle_setpoint_max;
 	_control_param.throttle_min = throttle_min;
 
+	//间隔更新
 	if (dt < DT_MIN) {
 		// Update intervall too small, do not update. Assume constant states/output in this case.
 		return;
@@ -709,6 +714,7 @@ void TECS::update(float pitch, float altitude, float hgt_setpoint, float EAS_set
 		initialize(altitude, hgt_rate, equivalent_airspeed, eas_to_tas);
 
 	} else {
+		//更新空速滤波子模块：使用TECSAirspeedFilter子模块更新等效空速和等效空速的变化率
 		// Update airspeedfilter submodule
 		const TECSAirspeedFilter::Input airspeed_input{ .equivalent_airspeed = equivalent_airspeed,
 				.equivalent_airspeed_rate = speed_deriv_forward / eas_to_tas};
@@ -716,12 +722,14 @@ void TECS::update(float pitch, float altitude, float hgt_setpoint, float EAS_set
 		_airspeed_filter.update(dt, airspeed_input, _airspeed_filter_param, _control_flag.airspeed_enabled);
 		const TECSAirspeedFilter::AirspeedFilterState eas = _airspeed_filter.getState();
 
+		//更新高度参考模型子模块：使用TECSAltitudeReferenceModel子模块根据设定的高度和高度变化率更新高度参考模型
 		// Update Reference model submodule
 		const TECSAltitudeReferenceModel::AltitudeReferenceState setpoint{ .alt = hgt_setpoint,
 				.alt_rate = hgt_rate_sp};
 
 		_altitude_reference_model.update(dt, setpoint, altitude, hgt_rate, _reference_param);
 
+		//计算控制输入：根据更新后的状态和参数，计算TECSControl输入，包括高度、高度变化率、真空速等
 		TECSControl::Setpoint control_setpoint;
 		control_setpoint.altitude_reference = _altitude_reference_model.getAltitudeReference();
 		control_setpoint.altitude_rate_setpoint_direct = _altitude_reference_model.getHeightRateSetpointDirect();
@@ -736,12 +744,13 @@ void TECS::update(float pitch, float altitude, float hgt_setpoint, float EAS_set
 							.tas = eas_to_tas * eas.speed,
 							.tas_rate = eas_to_tas * eas.speed_rate};
 
+		//更新TECSControl子模块：根据输入的参考模型和控制输入计算出下一步的控制指令
 		_control.update(dt, control_setpoint, control_input, _control_param, _control_flag);
 
 		// Update time stamps
 		_update_timestamp = now;
 
-
+		//设置TECS模式：根据TECSControl输出判断是否低速保护，从而设置TECS控制器的模式
 		// Set TECS mode for next frame
 		if (_control.getRatioUndersped() > FLT_EPSILON) {
 			_tecs_mode = ECL_TECS_MODE_UNDERSPEED;
@@ -751,6 +760,7 @@ void TECS::update(float pitch, float altitude, float hgt_setpoint, float EAS_set
 			_tecs_mode = ECL_TECS_MODE_NORMAL;
 		}
 
+		//更新调试状态：将TECS控制器的模式和调试输出保存在调试状态中，用于监控和调试
 		_debug_status.tecs_mode = _tecs_mode;
 		_debug_status.control = _control.getDebugOutput();
 		_debug_status.true_airspeed_filtered = eas_to_tas * eas.speed;

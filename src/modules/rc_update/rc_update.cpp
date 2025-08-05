@@ -63,6 +63,7 @@ static bool operator ==(const manual_control_switches_s &a, const manual_control
 static bool operator !=(const manual_control_switches_s &a, const manual_control_switches_s &b) { return !(a == b); }
 
 
+//初始化遥控器（RC）通道的参数和映射，以及设置按钮触发滞后。
 RCUpdate::RCUpdate() :
 	ModuleParams(nullptr),
 	WorkItem(MODULE_NAME, px4::wq_configurations::hp_default)
@@ -252,10 +253,11 @@ void RCUpdate::update_rc_functions()
 	map_flight_modes_buttons();
 }
 
+//更新遥控器通道与参数之间的映射关系,并打印调试信息
 void RCUpdate::rc_parameter_map_poll(bool forced)
 {
 	if (_rc_parameter_map_sub.updated() || forced) {
-		_rc_parameter_map_sub.copy(&_rc_parameter_map);
+		_rc_parameter_map_sub.copy(&_rc_parameter_map);	//从一个订阅（Subscriber）中复制最新的参数映射数据到一个名为_rc_parameter_map的数据结构中。
 
 		/* update parameter handles to which the RC channels are mapped */
 		for (int i = 0; i < rc_parameter_map_s::RC_PARAM_MAP_NCHAN; i++) {
@@ -290,8 +292,10 @@ void RCUpdate::rc_parameter_map_poll(bool forced)
 	}
 }
 
+//获取指定功能的遥控器通道值，并确保该值在[min_value,max_value]范围内
 float RCUpdate::get_rc_value(uint8_t func, float min_value, float max_value) const
 {
+	//_rc.function[]保存着遥控器通道的输入映射值
 	if (_rc.function[func] >= 0) {
 		return math::constrain(_rc.channels[_rc.function[func]], min_value, max_value);
 	}
@@ -473,6 +477,8 @@ void RCUpdate::Run()
 			const float dz = _parameters.dz[i];
 
 			// piecewise linear function to apply RC calibration
+			//插值函数，用于根据输入值value和给定的插值点，将原始遥控器通道值转换为校准后的通道值。
+			//插值函数将根据给定的四个点(min, trim - dz, trim + dz, max)对输入值进行线性插值，并返回转换后的值。
 			_rc.channels[i] = math::interpolateNXY(value,
 			{min, trim - dz, trim + dz, max},
 			{-1.f, 0.f, 0.f, 1.f});
@@ -690,7 +696,7 @@ void RCUpdate::UpdateManualControlInput(const hrt_abstime &timestamp_sample)
 
 	// publish manual_control_input topic
 	manual_control_input.timestamp = hrt_absolute_time();
-	_manual_control_input_pub.publish(manual_control_input);
+	_manual_control_input_pub.publish(manual_control_input);	//发布手动控制输入的消息，将manual_control_input结构体中的数据发布出去，供其他部分的代码使用。
 	_last_manual_control_input_publish = manual_control_input.timestamp;
 }
 

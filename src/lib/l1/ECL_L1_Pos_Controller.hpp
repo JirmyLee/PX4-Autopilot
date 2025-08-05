@@ -88,7 +88,7 @@ public:
 	 *
 	 * @return bearing angle (-pi..pi, in NED frame)
 	 */
-	float target_bearing() { return _target_bearing; }
+	float target_bearing() { return _target_bearing; }	//飞机和期望航点的朝向,被用在别的函数中了。
 
 	/**
 	 * Get the current crosstrack error.
@@ -124,15 +124,15 @@ public:
 
 private:
 
-	float _lateral_accel{0.0f};		///< Lateral acceleration setpoint in m/s^2
-	float _L1_distance{20.0f};		///< L1 lead distance, defined by period and damping
-	float _nav_bearing{0.0f};		///< bearing to L1 reference point
-	float _crosstrack_error{0.0f};	///< crosstrack error in meters
-	float _target_bearing{0.0f};		///< the heading setpoint
+	float _lateral_accel{0.0f};		///< Lateral acceleration setpoint in m/s^2(飞机的横向加速度， 这个变量用来计算飞机的横滚角。)
+	float _L1_distance{20.0f};		///< L1 lead distance, defined by period and damping(根据L1_PERIOD和L1_DAMPING算出来的飞机到L1点的长度。)
+	float _nav_bearing{0.0f};		///< bearing to L1 reference point(飞机的导航朝向, 也就是飞机和L1航点的朝向。这个值仅仅是发给地面站做显示，并没有被参与飞控控制。)
+	float _crosstrack_error{0.0f};		///< crosstrack error in meters(交叉轨迹的误差,固定翼走曲线路径时用到这个轨迹误差。)
+	float _target_bearing{0.0f};		///< the heading setpoint(飞机和期望航点的朝向,被用在别的函数中了。)
 
 	float _L1_period{25.0f};		///< L1 tracking period in seconds
 	float _L1_damping{0.75f};		///< L1 damping ratio
-	float _L1_ratio{5.0f};		///< L1 ratio for navigation
+	float _L1_ratio{5.0f};			///< L1 ratio for navigation
 	float _K_L1{2.0f};			///< L1 control gain for _L1_damping
 	float _heading_omega{1.0f};		///< Normalized frequency
 };

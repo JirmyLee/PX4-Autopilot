@@ -43,6 +43,7 @@
 #include <lib/geo/geo.h>
 #include <mathlib/mathlib.h>
 
+//一个简单的 P（Proportional）控制器来控制飞机的俯仰姿态。
 float ECL_PitchController::control_attitude(const float dt, const ECL_ControlData &ctl_data)
 {
 	/* Do not calculate control signal with bad inputs */
@@ -54,15 +55,19 @@ float ECL_PitchController::control_attitude(const float dt, const ECL_ControlDat
 		return _body_rate_setpoint;
 	}
 
-	/* Calculate the error */
+	/* Calculate the error */	//代码计算俯仰角的误差 pitch_error，即期望俯仰角和当前俯仰角之间的差值。
 	float pitch_error = ctl_data.pitch_setpoint - ctl_data.pitch;
 
 	/*  Apply P controller: rate setpoint from current error and time constant */
+	//通过 P 控制器来生成角速度目标值 _euler_rate_setpoint，计算公式为： _euler_rate_setpoint = pitch_error / _tc。其中，_tc 是控制器的时间常数，它决定了控制器的响应速度。
 	_euler_rate_setpoint =  pitch_error / _tc;
 
 	/* Transform setpoint to body angular rates (jacobian) */
+	//内环角速度控制：将期望值（设定值）转换为机体角速度（雅可比矩阵），具体做法：根据飞机的当前横滚角 ctl_data.roll 和俯仰角 ctl_data.pitch，
+	//以及偏航角速度目标值 ctl_data.euler_yaw_rate_setpoint，来计算在飞机体坐标系下的俯仰角速度目标值 pitch_body_rate_setpoint_raw。
 	const float pitch_body_rate_setpoint_raw = cosf(ctl_data.roll) * _euler_rate_setpoint +
 			cosf(ctl_data.pitch) * sinf(ctl_data.roll) * ctl_data.euler_yaw_rate_setpoint;
+	//限制角度范围
 	_body_rate_setpoint = math::constrain(pitch_body_rate_setpoint_raw, -_max_rate_neg, _max_rate);
 
 	return _body_rate_setpoint;

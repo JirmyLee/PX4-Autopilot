@@ -631,6 +631,8 @@ void EKF2::Run()
 
 		// push imu data into estimator
 		_ekf.setIMUData(imu_sample_new);
+
+		//发布姿态数据（使用来自输出预测器的四元数）
 		PublishAttitude(now); // publish attitude immediately (uses quaternion from output predictor)
 
 		// integrate time to monitor time slippage

@@ -46,6 +46,7 @@ using namespace matrix;
 
 const trajectory_setpoint_s PositionControl::empty_trajectory_setpoint = {0, {NAN, NAN, NAN}, {NAN, NAN, NAN}, {NAN, NAN, NAN}, {NAN, NAN, NAN}, NAN, NAN};
 
+//设置控制器的速度环（PID）的控制增益。
 void PositionControl::setVelocityGains(const Vector3f &P, const Vector3f &I, const Vector3f &D)
 {
 	_gain_vel_p = P;
@@ -53,6 +54,7 @@ void PositionControl::setVelocityGains(const Vector3f &P, const Vector3f &I, con
 	_gain_vel_d = D;
 }
 
+//设置水平和垂直速度的限制
 void PositionControl::setVelocityLimits(const float vel_horizontal, const float vel_up, const float vel_down)
 {
 	_lim_vel_horizontal = vel_horizontal;
@@ -60,6 +62,7 @@ void PositionControl::setVelocityLimits(const float vel_horizontal, const float 
 	_lim_vel_down = vel_down;
 }
 
+//设置推力的最小和最大限制
 void PositionControl::setThrustLimits(const float min, const float max)
 {
 	// make sure there's always enough thrust vector length to infer the attitude
@@ -67,11 +70,13 @@ void PositionControl::setThrustLimits(const float min, const float max)
 	_lim_thr_max = max;
 }
 
+//设置水平推力的余量。
 void PositionControl::setHorizontalThrustMargin(const float margin)
 {
 	_lim_thr_xy_margin = margin;
 }
 
+//根据新的悬停推力更新积分项，以适应悬停推力的变化
 void PositionControl::updateHoverThrust(const float hover_thrust_new)
 {
 	// Given that the equation for thrust is T = a_sp * Th / g - Th
@@ -88,6 +93,7 @@ void PositionControl::updateHoverThrust(const float hover_thrust_new)
 		       + CONSTANTS_ONE_G - _acc_sp(2);
 }
 
+//设置位置控制器的状态，包括位置、速度、偏航角等信息
 void PositionControl::setState(const PositionControlStates &states)
 {
 	_pos = states.position;
@@ -96,6 +102,7 @@ void PositionControl::setState(const PositionControlStates &states)
 	_vel_dot = states.acceleration;
 }
 
+//设置输入设置值，即位置、速度、加速度设定点，以及偏航角和偏航角速度设置值
 void PositionControl::setInputSetpoint(const trajectory_setpoint_s &setpoint)
 {
 	_pos_sp = Vector3f(setpoint.position);
@@ -105,6 +112,7 @@ void PositionControl::setInputSetpoint(const trajectory_setpoint_s &setpoint)
 	_yawspeed_sp = setpoint.yawspeed;
 }
 
+//执行位置和速度控制，并计算推力输出
 bool PositionControl::update(const float dt)
 {
 	bool valid = _inputValid();
@@ -121,6 +129,7 @@ bool PositionControl::update(const float dt)
 	return valid && _acc_sp.isAllFinite() && _thr_sp.isAllFinite();
 }
 
+//执行位置控制，生成目标速度，然后将其添加到速度设定点中。对速度设定点进行水平约束，然后对垂直速度进行约束
 void PositionControl::_positionControl()
 {
 	// P-position controller
@@ -137,6 +146,7 @@ void PositionControl::_positionControl()
 	_vel_sp(2) = math::constrain(_vel_sp(2), -_lim_vel_up, _lim_vel_down);
 }
 
+//执行速度控制，计算速度误差，并使用PID控制生成加速度设定点。对加速度设定点进行约束，然后执行加速度控制
 void PositionControl::_velocityControl(const float dt)
 {
 	// Constrain vertical velocity integral
@@ -201,6 +211,7 @@ void PositionControl::_velocityControl(const float dt)
 	_vel_int += vel_error.emult(_gain_vel_i) * dt;
 }
 
+//执行加速度控制，根据期望加速度生成推力输出
 void PositionControl::_accelerationControl()
 {
 	// Assume standard acceleration due to gravity in vertical direction for attitude generation
